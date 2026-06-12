@@ -19,6 +19,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/wa-app-service
   COMMON_LIB_REF: ${{ github.event.inputs.common_lib_ref || 'main' }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
