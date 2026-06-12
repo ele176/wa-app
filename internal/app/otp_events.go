@@ -53,12 +53,13 @@ func (s *Server) publishOTPCandidates(ctx context.Context, reqCtx *waappv1.Reque
 		if s.platformPublisher == nil {
 			continue
 		}
-		eventCtx := eventbus.NewEventContext(eventbus.EventContextConfig{
+		eventMetadata := eventbus.NewEventMetadata(eventbus.EventMetadataConfig{
 			EventID:        eventbus.StableEventID("wa-otp-", workspaceID, msg.GetMessageId(), otp),
 			EventName:      eventcatalog.WAOTPReceived.EventName,
 			EventVersion:   eventcatalog.WAOTPReceived.EventVersion,
 			OccurredAt:     receivedAt,
 			SourceService:  waPlatformEventSource,
+			Subject:        eventcatalog.WAOTPReceived.Subject,
 			CorrelationID:  firstNonEmpty(reqCtx.GetCorrelationId(), session.GetRegisteredIdentityId(), session.GetWaAccountId()),
 			TraceID:        reqCtx.GetTraceId(),
 			IdempotencyKey: eventbus.StableEventID("wa-otp-", workspaceID, msg.GetMessageId(), otp),
@@ -68,7 +69,7 @@ func (s *Server) publishOTPCandidates(ctx context.Context, reqCtx *waappv1.Reque
 			e164Number = account.GetPhone().GetE164Number()
 		}
 		event := &wav1.WaOtpReceivedEvent{
-			Context:              eventCtx,
+			Metadata:             eventMetadata,
 			WorkspaceId:          workspaceID,
 			E164Number:           e164Number,
 			Source:               source,
@@ -90,8 +91,13 @@ func (s *Server) publishOTPCandidates(ctx context.Context, reqCtx *waappv1.Reque
 			"source", source.String(),
 			"source_party", sourceParty,
 		)
+		message, err := eventcatalog.WAOTPReceived.NewMessage(event, eventMetadata, attrs)
+		if err != nil && ctx.Err() == nil {
+			log.Printf("build WA OTP event failed: %v", sanitizeEventPublishError(err))
+			continue
+		}
 		publishCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := s.platformPublisher.Publish(publishCtx, eventbus.Message{Subject: eventcatalog.WAOTPReceived.Subject, Event: event, Context: eventCtx, Attributes: attrs})
+		_, err = s.platformPublisher.Publish(publishCtx, message)
 		cancel()
 		if err != nil && ctx.Err() == nil {
 			log.Printf("publish WA OTP event failed: %v", sanitizeEventPublishError(err))
